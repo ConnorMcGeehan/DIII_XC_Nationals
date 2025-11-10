@@ -20,10 +20,4 @@ DIII_XC_Nationals/
 
 - **data/**: Contains cross country performance data from the 2024 and 2025 seasons pulled from LACCTiC
 - **scripts/**: R scripts for data cleaning, exploratory analysis, model building, and predictions
-- **reports/**: Output files including visualizations, statistical reports, and final predictions
-
-## Technologies
-
-- **Primary Language**: R
-- **Data Source**: LACCTiC (cross country results database)
-- **Course**: MATH348 - Data Science with R
+- **reports/**: Output files including visualizations, statistical reports, final predictions, and project summary
