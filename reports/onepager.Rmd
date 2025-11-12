@@ -15,12 +15,26 @@ TBD
 
 ## Questions
 
-Put questions here
+Who is going to be an All-American at the DIII 2025 XC National meet?
+
+How does our model compare to the predictions created by LACCTiC?
 
 ## Stakeholders
 
-Stakeholders?
+Stakeholders could include a wide variety of people:
+
+-   NCAA XC Coaches and Athletes
+
+-   XC Fans and Spectators
+
+-   High School Recruits interested in how different programs perform
+
+-   Administrators and Athletics Departments from competing schools
 
 ## KPIs
 
-What are they?
+-   Accuracy of model overall
+
+-   Accuracy of model in comparison to LACCTiC
+
+-   Models accuracy compared to predictions based off 8k season bests
