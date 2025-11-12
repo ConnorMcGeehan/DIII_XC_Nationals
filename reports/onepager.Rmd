@@ -1,0 +1,26 @@
+---
+title: "Final Project 1 Pager"
+author: "Connor McGeehan"
+date: "2025-11-12"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data
+
+TBD
+
+## Questions
+
+Put questions here
+
+## Stakeholders
+
+Stakeholders?
+
+## KPIs
+
+What are they?
