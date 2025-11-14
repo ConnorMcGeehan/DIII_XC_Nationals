@@ -9,15 +9,33 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+## Overview
+
+This project leverages historical race data to build a predictive model that forecasts the top 50 finishers—All-Americans, at the NCAA Division III Cross Country National Championships in 2025. By analyzing performance trends, athlete progression, and race conditions, we aim to provide a data-driven forecast that rivals existing prediction systems like LACCTiC.
+
 ## Data
 
-TFFRS Meet Result Data
+We use publicly available meet results from the **Track & Field Results Reporting System (TFFRS)**, which includes:
 
-1.  Athlete Name
-2.  Athlete Class
-3.  School
-4.  Race Distance
-5.  Time
+-   **Athlete Name** – Unique identifier for performance tracking
+
+-   **Athlete Class** – Freshman, Sophomore, Junior, Senior
+
+-   **School** – NCAA Division III institution
+
+-   **Race Distance** – Typically 8k for men, 6k for women
+
+-   **Time** – Official race finish time
+
+Additional derived features include:
+
+-   Course difficulty adjustments
+
+-   Weather conditions
+
+-   Head-to-head performance comparisons
+
+-   Season progression metrics
 
 ## Questions
 
