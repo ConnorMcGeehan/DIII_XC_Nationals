@@ -11,27 +11,29 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Overview
 
-This project leverages historical race data to build a predictive model that forecasts the top 50 finishers—All-Americans, at the NCAA Division III Cross Country National Championships in 2025. By analyzing performance trends, athlete progression, and race conditions, we aim to provide a data-driven forecast that rivals existing prediction systems like LACCTiC.
+This project uses historical race data to build a predictive model that forecasts the top 40 finishers; All-Americans, at the NCAA Division III Cross Country National Championships in 2025. By analyzing performance trends, athlete progression, and race conditions, we aim to provide a model that rivals existing prediction systems like LACCTiC.
 
 ## Data
 
-We use publicly available meet results from the **Track & Field Results Reporting System (TFFRS)**, which includes:
+We will use data collected from the LACCTiC API. This API gives us access to meet results and specific athlete's racing history. We will use this to collect the following information about each athlete:
 
--   **Athlete Name** – Unique identifier for performance tracking
+-   **Athlete ID** – A unique identifier for each athlete
 
--   **Athlete Class** – Freshman, Sophomore, Junior, Senior
+-   **Athlete Name** – The name of the Athlete
+
+-   **Athlete Class** – Freshman, Sophomore, Junior, Senior, Graduate Student
 
 -   **School** – NCAA Division III institution
 
--   **Race Distance** – Typically 8k for men, 6k for women
+Additionally, we will collect race results for each athlete who raced at the national championship. These results will include:
 
--   **Time** – Official race finish time
+-   **Athlete ID** – A unique identifier for each athlete
 
-Additional derived features include:
+-   **Race Distance** – Typically 8k for men, but varies by race
 
--   Course difficulty adjustments
+-   **Time** – Official race finish time in seconds
 
--   Weather conditions
+-   **Place** – The position that the athlete finished the race in
 
 -   Head-to-head performance comparisons
 
