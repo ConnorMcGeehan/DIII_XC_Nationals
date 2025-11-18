@@ -19,25 +19,39 @@ We will use data collected from the LACCTiC API. This API gives us access to mee
 
 -   **Athlete ID** – A unique identifier for each athlete
 
+-   **Year** – The year that the Athlete data is from
+
 -   **Athlete Name** – The name of the Athlete
 
 -   **Athlete Class** – Freshman, Sophomore, Junior, Senior, Graduate Student
 
 -   **School** – NCAA Division III institution
 
+-   **Number of Races Run** – The number of races that the athlete has competed in during the season
+
+-   **Personal Record** – The athlete's fastest recorded time over 8k
+
+-   **Season Record** – The athlete's fastest recorded 8k of the season
+
+-   **Consistency** – Standard Deviation of the athlete's times across 8k for that season
+
+-   **Days since Season PR** – As of the day of nationals, the number of days since they ran their fastest 8k
+
+-   **All-American** – Binary result representing whether or not the athlete was an All-American at the national meet (1 is yes, 0 is no)
+
 Additionally, we will collect race results for each athlete who raced at the national championship. These results will include:
 
 -   **Athlete ID** – A unique identifier for each athlete
+
+-   **Meet Data** – The day that the meet was run
+
+-   **Meet Name** – The name of the meet
 
 -   **Race Distance** – Typically 8k for men, but varies by race
 
 -   **Time** – Official race finish time in seconds
 
 -   **Place** – The position that the athlete finished the race in
-
--   Head-to-head performance comparisons
-
--   Season progression metrics
 
 ## Questions
 
