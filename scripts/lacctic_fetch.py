@@ -27,7 +27,7 @@ CONFIG = {
     "BASE_URL": "https://c03mmwsf5i.execute-api.us-east-2.amazonaws.com/production/api_ranking",
     "RACE_ENDPOINT": "/race_page/",
     "RUNNER_ENDPOINT": "/runner_page/",
-    "YEARS": [2021, 2022, 2023, 2024],
+    "YEARS": [2024],
     # Exact nationals meet name to match per your instruction
     "NATIONALS_MEET_NAME": "NCAA Division III Cross Country Championships",
     # Nationals rule: match exact string in meet_name (case sensitive or insensitive)
@@ -126,9 +126,12 @@ def is_8k_distance(dist_str):
 def fetch_all_races():
     races = []
     url = CONFIG["BASE_URL"] + CONFIG["RACE_ENDPOINT"]
+    params = {
+        "meet_name": CONFIG["NATIONALS_MEET_NAME"]
+    }
     logging.info("Fetching race pages (paginated)...")
     while url:
-        data = safe_get = safe_get_json(url)
+        data = safe_get = safe_get_json(url, params=params)
         if data is None:
             break
         # common API wraps list in 'results'
@@ -416,6 +419,12 @@ def main():
     if not races:
         logging.error("No races fetched; aborting.")
         sys.exit(1)
+
+    from collections import Counter
+    meet_names = Counter([r.get('meet_name') for r in races])
+    logging.info("Meet names found:")
+    for name, count in meet_names.most_common(10):
+        logging.info(f"  '{name}': {count} races")
 
     # 2) find nationals races for each year
     nationals_by_year = find_nationals_races(races)
