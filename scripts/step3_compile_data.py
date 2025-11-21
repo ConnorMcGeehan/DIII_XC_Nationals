@@ -1,257 +1,286 @@
 #!/usr/bin/env python3
 """
-step3_compile_data.py
+Fixed step3_compile_data.py — improvements based on user feedback:
 
-Reads athlete race histories and compiles final CSVs.
-Uses lifetime records for PR/All-American, and season-specific stats before nationals.
-Inputs: athlete_race_history.json
-Outputs: athletes.csv, races.csv
+- PR is now computed *as of nationals* (min time among XC races with date < nationals date).
+  This gives the athlete's best time up to the national meet for that year.
+- Season counts and season stats use **only** `season_xc_performances` (track results excluded).
+- Duplicate races (same date, normalized section, same time) are de-duplicated and counted once.
+- Season record, consistency, days-since-PR exclude nationals itself (races with date >= nat_date).
+
+Reads: /mnt/data/athlete_race_history.json (default)
+Writes: athletes.csv
 """
 
 import json
 import logging
-import pandas as pd
+from pathlib import Path
+from datetime import datetime
 import numpy as np
-from dateutil import parser as dateparser
-from config import CONFIG
+import pandas as pd
+
+# Try to import CONFIG; fallback defaults
+try:
+    from config import CONFIG
+except Exception:
+    CONFIG = {
+        "YEARS": [2021, 2022, 2023],
+        "TRACK_KEYWORDS": ["track", "indoor", "outdoor", "stadium"],
+        "MISSING_NUMERIC": -9999
+    }
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
+INPUT_PATH = "/mnt/data/athlete_race_history.json"
+OUTPUT_CSV = "athletes.csv"
+
+
 def parse_date(dstr):
-    """Parse date string to date object"""
-    if dstr is None:
+    if not dstr:
         return None
     try:
-        return dateparser.parse(dstr).date()
+        return datetime.fromisoformat(dstr).date()
     except Exception:
-        return None
+        try:
+            return datetime.strptime(dstr, "%Y-%m-%d").date()
+        except Exception:
+            try:
+                return datetime.fromisoformat(str(dstr).split('T')[0]).date()
+            except Exception:
+                return None
 
-def is_8k_distance(section):
-    """Check if distance string represents 8k"""
+
+def looks_like_8k(section):
     if not section:
         return False
-    s = section.lower()
-    return any(d in s for d in ['8k', '8.0k'])
+    s = str(section).lower()
+    return ("8k" in s) or ("8000" in s)
+
 
 def is_track_meet(meet_name, section):
-    """Check if meet is a track meet (not cross country)"""
     name = (meet_name or "").lower()
     sec = (section or "").lower()
-    for kw in CONFIG["TRACK_KEYWORDS"]:
-        if kw in name or kw in sec:
-            if kw.strip() in ("meters", "meter", "m"):
-                return True
-            if kw.strip() in ("track", "indoor", "outdoor", "stadium"):
-                return True
+    for kw in CONFIG.get("TRACK_KEYWORDS", []):
+        kk = kw.lower()
+        if kk in name or kk in sec:
+            return True
     return False
 
-def load_athlete_data(input_file="athlete_race_history.json"):
-    """Load all athlete data"""
-    with open(input_file, 'r') as f:
+
+def extract_xc_performances_from_season(season_block):
+    """Extract only XC performances from a season block and normalize them.
+    Return list of dicts with keys: time (float|None), date (date|None), section (str), meet_name (str), place
+    """
+    out = []
+    if not isinstance(season_block, dict):
+        return out
+
+    perfs = season_block.get('season_xc_performances')
+    if not perfs or not isinstance(perfs, list):
+        return out
+
+    for p in perfs:
+        # Each p typically: {time, modern_tic, race_weight_sig, significant, race: {...}, place}
+        time = p.get('time')
+        place = p.get('place')
+        race = p.get('race') if isinstance(p.get('race'), dict) else {}
+        meet_name = race.get('meet_name') or race.get('meet') or race.get('name') or ""
+        section = race.get('section') or p.get('section') or ""
+        date = parse_date(race.get('date') if race.get('date') else p.get('date'))
+
+        try:
+            time_val = float(time) if time is not None else None
+        except Exception:
+            time_val = None
+
+        out.append({
+            'time': time_val,
+            'date': date,
+            'section': section,
+            'meet_name': meet_name,
+            'place': place
+        })
+
+    return out
+
+
+def dedupe_performances(perf_list):
+    """Remove duplicates defined as same date (or None), normalized section, and same time.
+    Return list of unique performances preserving first occurrence order.
+    """
+    seen = set()
+    unique = []
+
+    for p in perf_list:
+        date_key = p['date'].isoformat() if p['date'] is not None else 'nodate'
+        # Normalize section: lowercase, collapse whitespace
+        sec_key = ' '.join(str(p['section']).lower().split()) if p.get('section') else ''
+        time_key = None if p['time'] is None else round(float(p['time']), 6)
+        key = (date_key, sec_key, time_key)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(p)
+    return unique
+
+
+def gather_lifetime_pr_before_date(history, cutoff_date):
+    """Compute lifetime PR (min 8k time) across all seasons' XC performances with date < cutoff_date.
+    If cutoff_date is None, consider all dates.
+    Only include performances that look like 8k.
+    """
+    times = []
+    season_ratings = history.get('season_ratings') if isinstance(history, dict) else None
+    if not season_ratings:
+        return None
+
+    for season in season_ratings:
+        perfs = extract_xc_performances_from_season(season)
+        for p in perfs:
+            if p['time'] is None:
+                continue
+            if not looks_like_8k(p['section']):
+                continue
+            if cutoff_date is not None and p['date'] is not None and not (p['date'] < cutoff_date):
+                # Exclude races on/after the cutoff
+                continue
+            # If date missing and cutoff_date given, conservatively include it (user may want it)
+            times.append(p['time'])
+
+    if not times:
+        return None
+    return float(np.nanmin(times))
+
+
+def gather_season_stats(history, nat_year, nat_date):
+    """Return season-specific stats using only season_xc_performances in the nat_year and before nat_date.
+    Returns dict: num_races, sr_time, consistency, days_since_season_pr
+    """
+    season_ratings = history.get('season_ratings') if isinstance(history, dict) else None
+    if not season_ratings:
+        return {'num_races': 0, 'sr_time': None, 'consistency': None, 'days_since_season_pr': None}
+
+    season_perfs = []
+    for season in season_ratings:
+        year_block = None
+        if isinstance(season.get('season'), dict):
+            year_block = season['season'].get('year')
+        elif isinstance(season.get('season'), int):
+            year_block = season.get('season')
+
+        if year_block != nat_year:
+            continue
+
+        perfs = extract_xc_performances_from_season(season)
+        # Only keep perfs strictly before nationals date (if nat_date present)
+        filtered = []
+        for p in perfs:
+            if nat_date is not None and p['date'] is not None:
+                if p['date'] >= nat_date:
+                    continue
+            # If p['date'] is None and nat_date exists, we still include it for counts but not for date-based things
+            filtered.append(p)
+        season_perfs.extend(filtered)
+
+    # Deduplicate season perfs
+    season_perfs = dedupe_performances(season_perfs)
+
+    # Number of races: count of season_perfs (XC only)
+    num_races = len(season_perfs)
+
+    # Season 8k times and dates
+    season_8k = [p for p in season_perfs if p['time'] is not None and looks_like_8k(p['section'])]
+    sr_time = float(np.nanmin([p['time'] for p in season_8k])) if season_8k else None
+
+    consistency = None
+    if len(season_8k) >= 2:
+        arr = np.array([p['time'] for p in season_8k], dtype=float)
+        consistency = float(np.std(arr, ddof=0))
+
+    days_since = None
+    if sr_time is not None and nat_date is not None:
+        # find most recent date among season_8k races that equal sr_time and have a date
+        candidates = [p['date'] for p in season_8k if p['time'] == sr_time and p['date'] is not None]
+        if candidates:
+            best_date = max(candidates)
+            days_since = (nat_date - best_date).days
+
+    return {
+        'num_races': num_races,
+        'sr_time': sr_time,
+        'consistency': consistency,
+        'days_since_season_pr': days_since
+    }
+
+
+def build_rows_from_json(input_path: str):
+    p = Path(input_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Input JSON not found at {input_path}")
+
+    with p.open('r') as f:
         data = json.load(f)
-    
-    athletes_by_year = {int(k): set(v) for k, v in data["athletes_by_year"].items()}
-    nat_place_map = {tuple(map(int, k.split(','))): v for k, v in data["nat_place_map"].items()}
-    nat_date_map = {int(k): parse_date(v) for k, v in data["nat_date_map"].items()}
-    athlete_info = {int(k): v for k, v in data["athlete_info"].items()}
-    athlete_histories = {int(k): v for k, v in data["athlete_histories"].items()}
-    
-    return athletes_by_year, nat_place_map, nat_date_map, athlete_info, athlete_histories
 
-def extract_races_from_history(history_data):
-    """Extract race list from athlete history data structure"""
-    # The structure varies, but typically races are in 'results' or directly as list
-    if isinstance(history_data, dict):
-        if 'results' in history_data:
-            return history_data['results']
-        elif 'xc_results' in history_data:
-            return history_data['xc_results']
-        # Try to find any list in the dict
-        for v in history_data.values():
-            if isinstance(v, list):
-                return v
-    elif isinstance(history_data, list):
-        return history_data
-    return []
+    athletes_by_year = {int(k): set(v) for k, v in data.get('athletes_by_year', {}).items()}
+    nat_place_map = {tuple(map(int, k.split(','))): v for k, v in data.get('nat_place_map', {}).items()}
+    nat_date_map = {int(k): parse_date(v) for k, v in data.get('nat_date_map', {}).items()}
+    athlete_info = {int(k): v for k, v in data.get('athlete_info', {}).items()}
+    athlete_histories = {int(k): v for k, v in data.get('athlete_histories', {}).items()}
 
-def build_athlete_snapshot_rows(athletes_by_year, nat_place_map, nat_date_map, 
-                                athlete_info, athlete_histories):
-    """Build athlete snapshot statistics using lifetime and season data"""
-    athlete_rows = []
-    
-    for year in CONFIG["YEARS"]:
+    rows = []
+
+    for year in CONFIG.get('YEARS', [2021, 2022, 2023]):
         nat_date = nat_date_map.get(year)
         athlete_ids = athletes_by_year.get(year, set())
-        logging.info(f"Year {year}: Processing {len(athlete_ids)} athletes (nationals date: {nat_date})")
-        
-        for aid in athlete_ids:
-            # Get athlete's race history
+        logging.info(f"Processing year {year}: {len(athlete_ids)} athletes; nationals date = {nat_date}")
+
+        for aid in sorted(athlete_ids):
             history = athlete_histories.get(aid)
             if not history:
-                logging.warning(f"No history found for athlete {aid}")
+                logging.warning(f"No history for athlete {aid}; skipping")
                 continue
-            
-            races = extract_races_from_history(history)
-            if not races:
-                logging.warning(f"No races found in history for athlete {aid}")
-                continue
-            
-            # Parse all races and filter out track meets
-            all_valid_races = []
-            for race in races:
-                meet_name = race.get('meet_name') or race.get('name') or ""
-                section = race.get('section') or ""
-                race_date_str = race.get('date')
-                race_date = parse_date(race_date_str)
-                
-                if is_track_meet(meet_name, section):
-                    continue
-                
-                time_sec = race.get('time')
-                place = race.get('place')
-                
-                all_valid_races.append({
-                    "date": race_date,
-                    "meet_name": meet_name,
-                    "section": section,
-                    "time": time_sec,
-                    "place": place
-                })
-            
-            # Separate lifetime 8k races and season-specific races
-            lifetime_8k = [r for r in all_valid_races if is_8k_distance(r['section']) and r['time'] is not None]
-            
-            # Season races: only those in the target year, before nationals
-            season_races = [r for r in all_valid_races if r['date'] and r['date'].year == year]
-            if nat_date:
-                season_races = [r for r in season_races if r['date'] < nat_date]
-            
-            season_8k = [r for r in season_races if is_8k_distance(r['section']) and r['time'] is not None]
-            
-            # Compute lifetime PR (from all 8k races ever)
-            pr_time = None
-            if lifetime_8k:
-                times = [float(r['time']) for r in lifetime_8k]
-                if times:
-                    pr_time = float(np.nanmin(times))
-            
-            # Compute season record (best 8k in that year before nationals)
-            sr_time = None
-            if season_8k:
-                times_s = [float(r['time']) for r in season_8k]
-                if times_s:
-                    sr_time = float(np.nanmin(times_s))
-            
-            # Compute consistency (std dev of season 8k times)
-            consistency = None
-            if season_8k:
-                times_s = np.array([float(r['time']) for r in season_8k])
-                if times_s.size >= 2:
-                    consistency = float(np.std(times_s, ddof=0))
-            
-            # Days since season PR
-            days_since_season_pr = None
-            if sr_time is not None and nat_date is not None:
-                # Find the date of the season PR (most recent if multiple)
-                pr_races = [r for r in season_8k if r['time'] is not None and float(r['time']) == sr_time]
-                if pr_races:
-                    pr_dates = [r['date'] for r in pr_races if r['date'] is not None]
-                    if pr_dates:
-                        best_date = max(pr_dates)  # Most recent
-                        days_since_season_pr = (nat_date - best_date).days
-            
-            # All-American status
-            nat_place = nat_place_map.get((year, aid))
-            all_american = 1 if (nat_place is not None and isinstance(nat_place, int) and nat_place <= 40) else 0
-            
-            # Get athlete info
-            info = athlete_info.get(aid, {})
-            athlete_name = info.get('name', '')
-            athlete_class = info.get('year_in_school', '')
-            school = info.get('school', '')
-            
-            # Number of races in season before nationals
-            num_races_run = len(season_races)
-            
-            def nn(v):
-                """Convert None/NaN to missing numeric value"""
-                return CONFIG['MISSING_NUMERIC'] if (v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v)))) else v
-            
-            athlete_rows.append({
-                "Athlete ID": aid,
-                "Year": year,
-                "Athlete Name": athlete_name,
-                "Athlete Class": athlete_class,
-                "School": school,
-                "Number of Races Run": nn(num_races_run),
-                "Personal Record": nn(pr_time),
-                "Season Record": nn(sr_time),
-                "Consistency": nn(consistency),
-                "Days since Season PR": nn(days_since_season_pr),
-                "All-American": all_american
-            })
-    
-    return athlete_rows
 
-def build_race_rows(athletes_by_year, athlete_histories):
-    """Build race results for included athletes (all their races)"""
-    included_athletes = set()
-    for year in CONFIG["YEARS"]:
-        included_athletes.update(athletes_by_year.get(year, set()))
-    
-    race_rows = []
-    for aid in included_athletes:
-        history = athlete_histories.get(aid)
-        if not history:
-            continue
-        
-        races = extract_races_from_history(history)
-        if not races:
-            continue
-        
-        for race in races:
-            meet_name = race.get('meet_name') or race.get('name') or ""
-            section = race.get('section') or ""
-            race_date_str = race.get('date')
-            race_date = parse_date(race_date_str)
-            
-            # Skip track meets
-            if is_track_meet(meet_name, section):
-                continue
-            
-            time_val = race.get('time')
-            place_val = race.get('place')
-            
-            race_rows.append({
-                "Athlete ID": aid,
-                "Meet Date": race_date.isoformat() if race_date else None,
-                "Meet Name": meet_name,
-                "Race Distance": section or "",
-                "Time": time_val if time_val is not None else CONFIG['MISSING_NUMERIC'],
-                "Place": place_val if place_val is not None else CONFIG['MISSING_NUMERIC']
-            })
-    
-    return race_rows
+            # Lifetime PR as of nationals: min 8k time across all XC perfs with date < nat_date
+            pr_time = gather_lifetime_pr_before_date(history, nat_date)
+
+            # Season stats (only XC, deduped, before nationals): num_races, sr_time, consistency, days
+            season_stats = gather_season_stats(history, year, nat_date)
+
+            info = athlete_info.get(aid, {})
+            athlete_name = info.get('name') or (f"{history.get('firstname','')} {history.get('lastname','')}".strip())
+            athlete_class = info.get('year_in_school') or history.get('year_in_school') or ''
+            school = info.get('school') or (history.get('team') or {}).get('name') or ''
+
+            nat_place = nat_place_map.get((year, aid))
+            all_american = 1 if (isinstance(nat_place, int) and nat_place <= 40) else 0
+
+            def nn(x):
+                return CONFIG.get('MISSING_NUMERIC', -9999) if x is None else x
+
+            row = {
+                'Athlete ID': aid,
+                'Year': year,
+                'Athlete Name': athlete_name,
+                'Athlete Class': athlete_class,
+                'School': school,
+                'Number of Races Run': nn(season_stats['num_races']),
+                'Personal Record': nn(pr_time),
+                'Season Record': nn(season_stats['sr_time']),
+                'Consistency': nn(season_stats['consistency']),
+                'Days since Season PR': nn(season_stats['days_since_season_pr']),
+                'All-American': all_american
+            }
+            rows.append(row)
+
+    return rows
+
 
 def main():
-    logging.info("Loading athlete data...")
-    athletes_by_year, nat_place_map, nat_date_map, athlete_info, athlete_histories = load_athlete_data()
-    
-    logging.info("Building athlete snapshots...")
-    athlete_rows = build_athlete_snapshot_rows(athletes_by_year, nat_place_map, nat_date_map, 
-                                               athlete_info, athlete_histories)
-    
-    logging.info("Building race results...")
-    race_rows = build_race_rows(athletes_by_year, athlete_histories)
-    
-    # Write CSVs
-    athletes_df = pd.DataFrame(athlete_rows)
-    races_df = pd.DataFrame(race_rows)
-    
-    athletes_df.to_csv("athletes.csv", index=False)
-    races_df.to_csv("races.csv", index=False)
-    
-    logging.info(f"Wrote athletes.csv ({len(athletes_df)} rows) and races.csv ({len(races_df)} rows).")
+    rows = build_rows_from_json("athlete_race_history.json")
+    df = pd.DataFrame(rows)
+    df.to_csv("athletes_data.csv", index=False)
+    logging.info(f"Wrote {OUTPUT_CSV} with {len(df)} rows")
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     main()
