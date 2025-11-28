@@ -1,0 +1,106 @@
+---
+title: "EDA"
+author: "Connor McGeehan"
+date: "2025-11-27"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Exploratory Data Analysis
+
+### Data and Libraries
+
+```{r}
+athlete_data <- read.csv("../data/athletes.csv")
+race_data <- read.csv("../data/races.csv")
+library(tidyverse)
+```
+
+## Single-variable visualizations
+
+**Number of Races Run**
+
+```{r}
+ggplot(athlete_data, aes(Number.of.Races.Run)) +
+  geom_bar(fill="blue") + 
+  labs(title="Number of Races Run Before National Meet", x="Number of Races", y="Number of Athletes")
+```
+
+
+**Personal Record**
+
+```{r}
+ggplot(athlete_data, aes(Personal.Record)) + 
+  geom_histogram(fill="skyblue") +
+  labs(title="Personal Record for XC 8k", x="Time (seconds)", y="Number of Athletes")
+```
+
+
+**Season Record**
+
+```{r}
+ggplot(athlete_data, aes(Season.Record)) + 
+  geom_histogram(fill="skyblue") +
+  labs(title="Season Record for XC 8k", x="Time (seconds)", y="Number of Athletes")
+```
+
+
+**Consistency**
+
+```{r}
+ggplot(athlete_data, aes(Consistency)) + 
+  geom_histogram(fill="skyblue") +
+  labs(title="Consistency of Performances", x="Standard Deviation of Times (seconds)", y="Number of Athletes")
+```
+
+
+**Days Since Season Record**
+
+```{r}
+ggplot(athlete_data, aes(Days.since.Season.PR)) + 
+  geom_bar(fill="green") +
+  labs(title="Days Since Season Record", x="Days", y="Number of Athletes")
+```
+
+
+**Time at Nationals**
+
+```{r}
+ggplot(race_data, aes(Time)) + 
+  geom_histogram(fill="skyblue") +
+  labs(title="Finishing Time at Nationals", x="Time (seconds)", y="Number of Athletes")
+```
+
+
+## Multiple Variables
+
+**Comparing Different Variables to All-American Status**
+
+Number of Races Run
+```{r}
+ggplot(athlete_data, aes(x=Number.of.Races.Run, fill=as.factor(All.American))) +
+  geom_bar(position="fill") + 
+  labs(title="")
+```
+
+Personal Record and Season Record
+
+```{r}
+athlete_data %>%
+  filter(Personal.Record>1350) %>%
+  ggplot(aes(x=Personal.Record, y=Season.Record, color=as.factor(All.American))) +
+    geom_point() +
+    facet_wrap(~Season.Record==Personal.Record) +
+    labs(title = "All-American Status by Personal and Season Records", x="Personal Record", y="Season Record")
+```
+
+
+**Consistency**
+
+```{r}
+
+```
+
