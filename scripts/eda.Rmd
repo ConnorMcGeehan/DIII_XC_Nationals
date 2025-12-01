@@ -29,7 +29,6 @@ ggplot(athlete_data, aes(Number.of.Races.Run)) +
   labs(title="Number of Races Run Before National Meet", x="Number of Races", y="Number of Athletes")
 ```
 
-
 **Personal Record**
 
 ```{r}
@@ -37,7 +36,6 @@ ggplot(athlete_data, aes(Personal.Record)) +
   geom_histogram(fill="skyblue") +
   labs(title="Personal Record for XC 8k", x="Time (seconds)", y="Number of Athletes")
 ```
-
 
 **Season Record**
 
@@ -47,7 +45,6 @@ ggplot(athlete_data, aes(Season.Record)) +
   labs(title="Season Record for XC 8k", x="Time (seconds)", y="Number of Athletes")
 ```
 
-
 **Consistency**
 
 ```{r}
@@ -55,7 +52,6 @@ ggplot(athlete_data, aes(Consistency)) +
   geom_histogram(fill="skyblue") +
   labs(title="Consistency of Performances", x="Standard Deviation of Times (seconds)", y="Number of Athletes")
 ```
-
 
 **Days Since Season Record**
 
@@ -65,7 +61,6 @@ ggplot(athlete_data, aes(Days.since.Season.PR)) +
   labs(title="Days Since Season Record", x="Days", y="Number of Athletes")
 ```
 
-
 **Time at Nationals**
 
 ```{r}
@@ -74,33 +69,59 @@ ggplot(race_data, aes(Time)) +
   labs(title="Finishing Time at Nationals", x="Time (seconds)", y="Number of Athletes")
 ```
 
-
 ## Multiple Variables
 
 **Comparing Different Variables to All-American Status**
 
 Number of Races Run
+
 ```{r}
 ggplot(athlete_data, aes(x=Number.of.Races.Run, fill=as.factor(All.American))) +
   geom_bar(position="fill") + 
-  labs(title="")
+  scale_fill_discrete(name = "All-American",
+                      labels = c("No", "Yes")) +
+  labs(title="All-American Status by Number of Races Run",
+       x = "Number of Races Run",
+        y = "Proportion of All-Americans")
 ```
 
 Personal Record and Season Record
 
 ```{r}
 athlete_data %>%
-  filter(Personal.Record>1350) %>%
-  ggplot(aes(x=Personal.Record, y=Season.Record, color=as.factor(All.American))) +
+  filter(Personal.Record > 1350) %>%
+  mutate(PR_SR = ifelse(Season.Record == Personal.Record,
+                        "PR = SR",
+                        "SR ≠ PR")) %>%
+  ggplot(aes(x = Personal.Record, y = Season.Record, color = as.factor(All.American))) +
     geom_point() +
-    facet_wrap(~Season.Record==Personal.Record) +
-    labs(title = "All-American Status by Personal and Season Records", x="Personal Record", y="Season Record")
+    scale_color_discrete(name="All-American", labels = c("0"="No", "1"="Yes")) +
+    facet_wrap(~PR_SR) +
+    labs(
+      title = "All-American Status by Personal and Season Records",
+      x = "Personal Record",
+      y = "Season Record"
+      )
 ```
 
-
-**Consistency**
+Consistency
 
 ```{r}
-
+ggplot(athlete_data, aes(x = Consistency, fill = as.factor(All.American))) +
+    geom_density(alpha = 0.4) +
+    scale_fill_manual(values = c("0" = "red", "1" = "blue"),
+                      name = "All-American",
+                      labels = c("No", "Yes")) +
+    coord_cartesian(xlim = c(0, 150)) +
+    labs(
+        title = "Density of Consistency for All-Americans vs Non-All-Americans",
+        x = "Consistency (Std Dev)",
+        y = "Density"
+    )
 ```
 
+Days Since Season PR
+
+```{r}
+ggplot()
+```
