@@ -29,7 +29,6 @@ athlete_data <- athlete_data %>%
 write_csv(athlete_data, "cleaned_athlete_data.csv")
 ```
 
-
 ## Single-variable visualizations
 
 **Number of Races Run**
@@ -131,13 +130,6 @@ ggplot(athlete_data, aes(x = Consistency, fill = as.factor(All.American))) +
     )
 ```
 
-Days Since Season PR
-
-```{r}
-ggplot()
-```
-
-<<<<<<< HEAD
 **Consistency compared with Season Record**
 
 ```{r}
@@ -169,5 +161,3 @@ athlete_data %>%
          x = "Days Since Season PR") +
     theme_minimal(base_size = 12)
 ```
-=======
->>>>>>> 42b58306c981f6eff2ebc8f402fda45abd8ea1ef
