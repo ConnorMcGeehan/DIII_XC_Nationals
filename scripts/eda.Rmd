@@ -19,6 +19,17 @@ race_data <- read.csv("../data/races.csv")
 library(tidyverse)
 ```
 
+## Data Cleaning and Test/Train Split
+
+```{r}
+#remove personal record or season record less than 1350 seconds
+athlete_data <- athlete_data %>%
+  filter(Personal.Record >= 1350 & Season.Record >= 1350)
+
+write_csv(athlete_data, "cleaned_athlete_data.csv")
+```
+
+
 ## Single-variable visualizations
 
 **Number of Races Run**
@@ -123,24 +134,10 @@ ggplot(athlete_data, aes(x = Consistency, fill = as.factor(All.American))) +
 Days Since Season PR
 
 ```{r}
-ggplot(athlete_data, aes(y=Days.since.Season.PR, x=as.factor(All.American),
-                         fill=as.factor(All.American))) +
-  geom_boxplot() +
-  stat_summary(
-    fun = mean,
-    geom = "crossbar",
-    width = 0.6,
-    color = "purple",
-    fatten = 1.5
-  ) +
-  labs(title="Days Since Season Record and All-American Status",
-       x="All-American Status",
-       y="Days since Season Record",
-       caption = "*Purple bar displays the mean") + 
-  scale_fill_discrete(name="All-American", 
-                      labels=c("0"="No", "1"="Yes"))
+ggplot()
 ```
 
+<<<<<<< HEAD
 **Consistency compared with Season Record**
 
 ```{r}
@@ -172,3 +169,5 @@ athlete_data %>%
          x = "Days Since Season PR") +
     theme_minimal(base_size = 12)
 ```
+=======
+>>>>>>> 42b58306c981f6eff2ebc8f402fda45abd8ea1ef
