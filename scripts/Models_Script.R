@@ -1,0 +1,54 @@
+athlete_data <- read.csv("../data/cleaned_athlete_data.csv")
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+
+
+## Logisitc Model
+
+```{r}
+model1 <- glm(All.American ~ Days.since.Season.PR + Consistency + Season.Record + Personal.Record + Number.of.Races.Run, data = train_data, family = binomial)
+summary(model1)
+```
+
+##Model Visualization
+
+```{r}
+#vizualize model1
+train_data <- train_data %>%
+  mutate(predicted_prob = predict(model1, type = "response"))
+ggplot(train_data, aes(x = predicted_prob, fill = as.factor(All.American))) +
+  geom_histogram(position = "identity", alpha = 0.5, bins = 30) +
+  scale_fill_manual(values = c("0" = "red", "1" = "blue"),
+                    name = "All-American",
+                    labels = c("No", "Yes")) +
+  labs(
+    title = "Predicted Probabilities of Being an All-American",
+    x = "Predicted Probability",
+    y = "Count"
+  )
+
+#make a logisitc curve for model1
+ggplot(train_data, aes(x = Season.Record, y = predicted_prob, color = as.factor(All.American))) +
+  geom_point() +
+  geom_smooth(method = "glm", method.args = list(family = "binomial"), se = FALSE) +
+  scale_color_manual(values = c("0" = "red", "1" = "blue"),
+                     name = "All-American",
+                     labels = c("No", "Yes")) +
+  labs(
+    title = "Logistic Curve of Predicted Probabilities by Season Record",
+    x = "Season Record",
+    y = "Predicted Probability"
+  )
+```
+
+##Decision Tree Model
+```{r}
+library(rpart)
+library(rpart.plot)
+tree_model <- rpart(
+  as.factor(All.American) ~ Days.since.Season.PR + Consistency + Season.Record + Personal.Record + Number.of.Races.Run,
+  data = train_data,
+  control = rpart.control(cp = 0.01)
+)
+rpart.plot(tree_model, main = "Decision Tree for All-American Prediction")
