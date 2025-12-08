@@ -19,16 +19,6 @@ race_data <- read.csv("../data/races.csv")
 library(tidyverse)
 ```
 
-## Data Cleaning and Test/Train Split
-
-```{r}
-#remove personal record or season record less than 1350 seconds
-athlete_data <- athlete_data %>%
-  filter(Personal.Record >= 1350 & Season.Record >= 1350)
-
-write_csv(athlete_data, "cleaned_athlete_data.csv")
-```
-
 ## Single-variable visualizations
 
 **Number of Races Run**
@@ -160,4 +150,14 @@ athlete_data %>%
          y = "Consistency",
          x = "Days Since Season PR") +
     theme_minimal(base_size = 12)
+```
+
+## Data Cleaning and Test/Train Split
+
+```{r}
+#remove personal record or season record less than 1350 seconds
+cleaned_athlete_data <- athlete_data %>%
+  filter(Personal.Record >= 1350 & Season.Record >= 1350)
+
+write.csv(cleaned_athlete_data, ".\\data\\cleaned_athlete_data.csv")
 ```
