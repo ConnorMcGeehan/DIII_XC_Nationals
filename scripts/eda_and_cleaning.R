@@ -2,7 +2,7 @@
 
 # Data and Libraries
 athlete_data <- read.csv("./data/athletes.csv")
-race_data <- read.csv("./data/races.csv")
+race_data <- read.csv("./data/2021_23_races.csv")
 library(tidyverse)
 
 
@@ -34,7 +34,7 @@ ggplot(athlete_data, aes(Days.since.Season.PR)) +
   labs(title="Days Since Season Record", x="Days", y="Number of Athletes")
 
 # Time at Nationals
-ggplot(race_data, aes(Time)) + 
+ggplot(race_data, aes(time)) + 
   geom_histogram(fill="skyblue") +
   labs(title="Finishing Time at Nationals", x="Time (seconds)", y="Number of Athletes")
 
@@ -109,6 +109,8 @@ athlete_data %>%
 
 # Data Cleaning
 cleaned_athlete_data <- athlete_data %>%
-  filter(Personal.Record >= 1350 & Season.Record >= 1350)
+  filter(Personal.Record >= 1350 & Season.Record >= 1350) %>%
+  left_join(race_data, by = c("Athlete.ID" = "athlete_id", "Year" = "year")) %>%
+  select(Athlete.ID, Year, Athlete.Nam)
 
 write.csv(cleaned_athlete_data, ".\\data\\cleaned_athlete_data.csv")
