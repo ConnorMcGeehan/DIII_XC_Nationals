@@ -1,0 +1,18 @@
+---
+title: "Executive Summary"
+author: "Matthew Andersen & Connor McGeehan"
+date: "2025-12-17"
+output: html_document
+---
+
+Predicting NCAA Division III cross country All-Americans is challenging due to substantial variation in race surfaces, terrain, weather conditions, and competitive fields. These contextual differences make raw race times difficult to compare and limit the usefulness of simple performance rankings. Motivated by the LACCTiC calculator developed by Dr. Bijan Mazaheri, this project applies supervised machine learning methods to improve the prediction of All-American outcomes using season-long performance indicators rather than single-race results.
+
+Using cleaned historical data from the 2021–2023 NCAA Division III National Championships, we trained and evaluated three classification models: logistic regression, decision trees, and random forests. The primary research questions were (1) whether a statistical model could accurately predict All-American status and (2) how model-based predictions compare to existing heuristics such as LACCTiC rankings or simple season-record cutoffs.
+
+Prior to modeling, data cleaning addressed two key issues. First, several observations incorrectly recorded 6k race performances as 8k results and were corrected or removed. Second, strong multicollinearity was identified between Personal Record and Season Record; to maintain model stability and interpretability, Personal Record was excluded. The final feature set included Number of Races Run, Season Record, Consistency, and Days Since Season PR. All models were trained using 10-fold cross-validation to ensure robust out-of-sample performance.
+
+Model evaluation emphasized both traditional classification metrics and a domain-specific measure called Top-40 Accuracy, reflecting the fact that exactly 40 athletes earn All-American honors each year. While all three models demonstrated strong generalization, logistic regression emerged as the preferred model due to consistently high performance across cross-validation metrics, interpretability, and stable behavior on training data. Although the random forest slightly outperformed logistic regression on held-out test data, the margin was small and did not outweigh the advantages of a simpler, more transparent model.
+
+Results indicate that naive approaches perform substantially worse than model-based predictions. Selecting the top 40 athletes by season record alone achieved approximately 65% accuracy, while random selection yielded roughly 13.75%. The logistic regression model modestly exceeded the season-record baseline and performed comparably to the LACCTiC calculator, correctly predicting 28 of 40 All-Americans (70%). Analysis of prediction errors showed that false positives were often athletes with strong seasons who underperformed at nationals, while false negatives were typically athletes finishing just outside the All-American cutoff, suggesting the model struggled primarily with race-day variability rather than structural bias.
+
+Overall, this project demonstrates that relatively simple statistical models can effectively predict elite outcomes in a noisy, real-world sports context. The strong generalization of all three models may indicate that the evaluated season was unusually predictable, but the results still support logistic regression as a well-balanced choice. The findings highlight the value of combining domain knowledge with data-driven modeling to improve decision-making in sports analytics.
