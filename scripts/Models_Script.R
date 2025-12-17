@@ -261,3 +261,11 @@ ggplot(top40_comparison_long, aes(x = as.factor(Year), y = Accuracy, fill = Mode
     y = "Accuracy (% of top 40 that were All-Americans)"
   )
 
+
+# Save models
+
+saveRDS(model1_cv, "./models/logistic_model.rds")
+saveRDS(tree_model_cv, "./models/tree_model.rds")
+saveRDS(rf_model_cv, "./models/rf_model.rds")
+
+
