@@ -4,6 +4,7 @@
 library(tidyverse)
 library(caret)
 library(pROC)
+library(dplyr)
 
 
 test_data <- read.csv("./data/2025_results.csv")
@@ -164,6 +165,22 @@ false_negatives <- test_data_ranked %>%
   select(Athlete.Name, School, Season.Record, pred_prob_logistic, Nationals.Place, predicted_rank)
 
 print(false_negatives)
+
+#lacctic predictions
+lacctic_predictions <- lacctic_predictions %>%
+   left_join(test_data_ranked %>% select(Athlete.Name, All.American),
+             by = c("Name" = "Athlete.Name"))
+colnames(lacctic_predictions)[1] <- "predicted_place"
+#count if predicted_place <= 40 AND All.American= 1
+lacctic_correct <- lacctic_predictions %>%
+  filter(predicted_place <= 40 & All.American == 1) %>%
+  nrow()
+print(paste("Lacctic Correct All-Americans in Top 40:", lacctic_correct))
+
+
+  
+
+
 
 
 # Histogram of predicted probabilities (Logistic Regression)
