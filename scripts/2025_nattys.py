@@ -1,40 +1,38 @@
 #!/usr/bin/env python3
 """
-Fetch 2025 D3 National Championship data and compile athlete statistics.
-Outputs: athletes_data_2025.csv
+fetch_and_process_2025_nationals.py
+
+Fetches the 2025 NCAA Division III Cross Country Championships race data,
+retrieves each athlete's complete race history, and processes it to generate
+statistics (PR, SR, consistency, etc.) as of nationals (excluding nationals itself).
+Outputs: 2025_results.csv
 """
 
 import requests
 import json
 import logging
 import time
-from datetime import datetime
-from collections import defaultdict
 import numpy as np
 import pandas as pd
+from datetime import datetime
+from dateutil import parser as dateparser
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # Configuration
 CONFIG = {
-    "BASE_URL": "https://c03mmwsf5i.execute-api.us-east-2.amazonaws.com/production/api_ranking/",
-    "RACE_ENDPOINT": "race_page",
-    "RUNNER_ENDPOINT": "xc_runner/",
-    "REQUEST_HEADERS": {"User-Agent": "Mozilla/5.0"},
-    "REQUEST_SLEEP": 0.5,
-    "NATIONALS_MEET_NAME": "NCAA Division III Cross Country Championships",
-    "NATIONALS_CASE_INSENSITIVE": True,
-    "YEAR": 2025,
+    "BASE_URL": "https://c03mmwsf5i.execute-api.us-east-2.amazonaws.com/production",
+    "RUNNER_ENDPOINT": "/api_ranking/runner_page/",
+    "REQUEST_SLEEP": 0.1,
     "TRACK_KEYWORDS": ["track", "indoor", "outdoor", "stadium"],
     "MISSING_NUMERIC": -9999
 }
 
-def safe_get_json(url, params=None, max_tries=3):
+def safe_get_json(url, max_tries=3):
     """Safely fetch JSON from API with retry logic"""
-    headers = CONFIG["REQUEST_HEADERS"]
     for attempt in range(max_tries):
         try:
-            r = requests.get(url, params=params, headers=headers, timeout=30)
+            r = requests.get(url, timeout=30)
             if r.status_code == 200:
                 return r.json()
             else:
@@ -50,106 +48,18 @@ def parse_date(dstr):
     if not dstr:
         return None
     try:
-        return datetime.fromisoformat(str(dstr).split('T')[0]).date()
+        return dateparser.parse(dstr).date()
     except Exception:
         try:
-            return datetime.strptime(str(dstr), "%Y-%m-%d").date()
+            return datetime.fromisoformat(dstr).date()
         except Exception:
-            return None
-
-def fetch_all_races():
-    """Fetch all races from API (paginated)"""
-    races = []
-    url = CONFIG["BASE_URL"] + CONFIG["RACE_ENDPOINT"]
-    logging.info("Fetching race pages...")
-    
-    while url:
-        data = safe_get_json(url)
-        if data is None:
-            break
-        
-        if isinstance(data, dict) and 'results' in data:
-            page_list = data['results']
-            races.extend(page_list)
-            url = data.get('next')
-        elif isinstance(data, list):
-            races.extend(data)
-            url = None
-        else:
-            found = False
-            for v in data.values():
-                if isinstance(v, list):
-                    races.extend(v)
-                    found = True
-                    break
-            if not found:
-                break
-            url = None
-        
-        if url:
-            time.sleep(CONFIG["REQUEST_SLEEP"])
-    
-    logging.info(f"Fetched {len(races)} total races")
-    return races
-
-def find_nationals_race(races, year):
-    """Find the nationals race for the specified year"""
-    target = CONFIG["NATIONALS_MEET_NAME"]
-    
-    for r in races:
-        if (r.get('sex') or '').upper() != 'M':
-            continue
-        
-        name = r.get('meet_name') or ''
-        cmp_name = name.lower() if CONFIG["NATIONALS_CASE_INSENSITIVE"] else name
-        cmp_target = target.lower() if CONFIG["NATIONALS_CASE_INSENSITIVE"] else target
-        
-        if cmp_name.strip() == cmp_target.strip():
-            rd = parse_date(r.get('date'))
-            if rd and rd.year == year:
-                logging.info(f"Found {year} nationals race on {rd}")
-                return r, rd
-    
-    logging.warning(f"No nationals race found for {year}")
-    return None, None
-
-def extract_athletes_from_nationals(nationals_race):
-    """Extract athlete IDs from nationals race"""
-    athletes = set()
-    nat_place_map = {}
-    athlete_info = {}
-    
-    for res in (nationals_race.get('xc_results') or []):
-        runner = res.get('runner') or {}
-        rid = runner.get('id')
-        if rid is not None:
-            athletes.add(rid)
-            
-            place = res.get('place')
-            if place is not None:
-                nat_place_map[rid] = place
-            
-            if rid not in athlete_info:
-                firstname = runner.get('firstname') or ""
-                lastname = runner.get('lastname') or ""
-                athlete_info[rid] = {
-                    "name": (firstname + " " + lastname).strip(),
-                    "year_in_school": runner.get('year_in_school') or "",
-                    "school": (runner.get('team') or {}).get('name') or ""
-                }
-    
-    logging.info(f"Extracted {len(athletes)} athletes from nationals")
-    return athletes, nat_place_map, athlete_info
-
-def fetch_athlete_race_history(athlete_id):
-    """Fetch complete race history for a single athlete"""
-    url = CONFIG["BASE_URL"] + CONFIG["RUNNER_ENDPOINT"] + str(athlete_id)
-    data = safe_get_json(url)
-    time.sleep(CONFIG["REQUEST_SLEEP"])
-    return data
+            try:
+                return datetime.strptime(dstr, "%Y-%m-%d").date()
+            except Exception:
+                return None
 
 def looks_like_8k(section):
-    """Check if section looks like an 8k race"""
+    """Check if race section indicates 8k distance"""
     if not section:
         return False
     s = str(section).lower()
@@ -189,7 +99,7 @@ def extract_xc_performances_from_season(season_block):
     return out
 
 def dedupe_performances(perf_list):
-    """Remove duplicate performances"""
+    """Remove duplicate performances (same date, section, time)"""
     seen = set()
     unique = []
 
@@ -205,7 +115,7 @@ def dedupe_performances(perf_list):
     return unique
 
 def gather_lifetime_pr_before_date(history, cutoff_date):
-    """Compute lifetime PR before cutoff date"""
+    """Compute lifetime PR (min 8k time) before cutoff_date"""
     times = []
     season_ratings = history.get('season_ratings') if isinstance(history, dict) else None
     if not season_ratings:
@@ -227,7 +137,7 @@ def gather_lifetime_pr_before_date(history, cutoff_date):
     return float(np.nanmin(times))
 
 def gather_season_stats(history, nat_year, nat_date):
-    """Compute season statistics"""
+    """Compute season stats before nationals date"""
     season_ratings = history.get('season_ratings') if isinstance(history, dict) else None
     if not season_ratings:
         return {'num_races': 0, 'sr_time': None, 'consistency': None, 'days_since_season_pr': None}
@@ -244,6 +154,7 @@ def gather_season_stats(history, nat_year, nat_date):
             continue
 
         perfs = extract_xc_performances_from_season(season)
+        # Only keep perfs strictly before nationals date
         filtered = []
         for p in perfs:
             if nat_date is not None and p['date'] is not None:
@@ -252,9 +163,13 @@ def gather_season_stats(history, nat_year, nat_date):
             filtered.append(p)
         season_perfs.extend(filtered)
 
+    # Deduplicate season perfs
     season_perfs = dedupe_performances(season_perfs)
+
+    # Number of races
     num_races = len(season_perfs)
 
+    # Season 8k times and dates
     season_8k = [p for p in season_perfs if p['time'] is not None and looks_like_8k(p['section'])]
     sr_time = float(np.nanmin([p['time'] for p in season_8k])) if season_8k else None
 
@@ -277,80 +192,152 @@ def gather_season_stats(history, nat_year, nat_date):
         'days_since_season_pr': days_since
     }
 
-def main():
-    year = CONFIG["YEAR"]
+def fetch_nationals_2025_race():
+    """Fetch the 2025 NCAA Division III XC Championships race"""
+    url = "https://c03mmwsf5i.execute-api.us-east-2.amazonaws.com/production/api_ranking/race_page/?page=2"
     
-    # Step 1: Find nationals race
-    logging.info(f"Step 1: Fetching races and finding {year} nationals...")
-    all_races = fetch_all_races()
-    nationals_race, nat_date = find_nationals_race(all_races, year)
+    logging.info(f"Fetching race data from: {url}")
     
-    if not nationals_race:
-        logging.error(f"Could not find {year} nationals race. Exiting.")
-        return
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as e:
+        logging.error(f"Failed to fetch data: {e}")
+        return None, None, None
     
-    # Step 2: Extract athletes
-    logging.info("Step 2: Extracting athletes from nationals...")
-    athletes, nat_place_map, athlete_info = extract_athletes_from_nationals(nationals_race)
+    if 'results' not in data:
+        logging.error("No 'results' field in API response")
+        return None, None, None
     
-    # Step 3: Fetch athlete histories
-    logging.info(f"Step 3: Fetching race history for {len(athletes)} athletes...")
-    athlete_histories = {}
-    for i, athlete_id in enumerate(sorted(athletes)):
-        if (i + 1) % 50 == 0:
-            logging.info(f"Fetched {i + 1}/{len(athletes)} athletes...")
+    races = data['results']
+    
+    # Find the 2025 NCAA Division III Championships race
+    target_race = None
+    for race in races:
+        meet_name = race.get('meet_name', '')
+        date = race.get('date', '')
+        sex = race.get('sex', '')
         
-        history = fetch_athlete_race_history(athlete_id)
-        if history:
-            athlete_histories[athlete_id] = history
+        if ('NCAA Division III Cross Country Championships' in meet_name and 
+            sex == 'M' and 
+            date and date.startswith('2025')):
+            target_race = race
+            break
     
-    # Step 4: Compile data
-    logging.info("Step 4: Compiling athlete statistics...")
+    if not target_race:
+        logging.error("Could not find 2025 NCAA Division III Championships race")
+        return None, None, None
+    
+    logging.info(f"Found race: {target_race['meet_name']}")
+    logging.info(f"Date: {target_race['date']}")
+    
+    nat_date = parse_date(target_race['date'])
+    
+    # Extract all runner IDs and places
+    athletes = []
+    xc_results = target_race.get('xc_results', [])
+    
+    for result in xc_results:
+        runner = result.get('runner', {})
+        runner_id = runner.get('id')
+        
+        if runner_id is not None:
+            firstname = runner.get('firstname', '')
+            lastname = runner.get('lastname', '')
+            team = runner.get('team', {})
+            
+            athletes.append({
+                'id': runner_id,
+                'name': f"{firstname} {lastname}".strip(),
+                'year_in_school': runner.get('year_in_school', ''),
+                'school': team.get('name', ''),
+                'place': result.get('place'),
+                'nat_time': result.get('time')
+            })
+    
+    logging.info(f"Extracted {len(athletes)} athletes")
+    
+    return athletes, nat_date, target_race
+
+def fetch_athlete_race_history(athlete_id):
+    """Fetch complete race history for a single athlete"""
+    url = CONFIG["BASE_URL"] + CONFIG["RUNNER_ENDPOINT"] + str(athlete_id)
+    data = safe_get_json(url)
+    time.sleep(CONFIG["REQUEST_SLEEP"])
+    return data
+
+def process_athlete_data(athletes, nat_date):
+    """Fetch histories and compute stats for all athletes"""
     rows = []
     
-    for aid in sorted(athletes):
-        history = athlete_histories.get(aid)
+    logging.info(f"Fetching race history for {len(athletes)} athletes...")
+    
+    for i, athlete in enumerate(athletes):
+        if (i + 1) % 50 == 0:
+            logging.info(f"Processed {i + 1}/{len(athletes)} athletes...")
+        
+        athlete_id = athlete['id']
+        history = fetch_athlete_race_history(athlete_id)
+        
         if not history:
-            logging.warning(f"No history for athlete {aid}; skipping")
+            logging.warning(f"Failed to fetch history for athlete {athlete_id}")
             continue
-
+        
+        # Compute PR (lifetime best 8k before nationals)
         pr_time = gather_lifetime_pr_before_date(history, nat_date)
-        season_stats = gather_season_stats(history, year, nat_date)
-
-        info = athlete_info.get(aid, {})
-        athlete_name = info.get('name') or (f"{history.get('firstname','')} {history.get('lastname','')}".strip())
-        athlete_class = info.get('year_in_school') or history.get('year_in_school') or ''
-        school = info.get('school') or (history.get('team') or {}).get('name') or ''
-
-        nat_place = nat_place_map.get(aid)
-        all_american = 1 if (isinstance(nat_place, int) and nat_place <= 40) else 0
-
+        
+        # Compute season stats (2025 season, before nationals)
+        season_stats = gather_season_stats(history, 2025, nat_date)
+        
+        # Determine All-American status (top 40)
+        place = athlete['place']
+        all_american = 1 if (isinstance(place, int) and place <= 40) else 0
+        
         def nn(x):
             return CONFIG['MISSING_NUMERIC'] if x is None else x
-
+        
         row = {
-            'Athlete ID': aid,
-            'Year': year,
-            'Athlete Name': athlete_name,
-            'Athlete Class': athlete_class,
-            'School': school,
+            'Athlete ID': athlete_id,
+            'Year': 2025,
+            'Athlete Name': athlete['name'],
+            'Athlete Class': athlete['year_in_school'],
+            'School': athlete['school'],
             'Number of Races Run': nn(season_stats['num_races']),
             'Personal Record': nn(pr_time),
             'Season Record': nn(season_stats['sr_time']),
             'Consistency': nn(season_stats['consistency']),
             'Days since Season PR': nn(season_stats['days_since_season_pr']),
-            'All-American': all_american
+            'All-American': all_american,
+            'Nationals Place': nn(place),
+            'Nationals Time': nn(athlete['nat_time'])
         }
         rows.append(row)
+    
+    logging.info(f"Successfully processed {len(rows)} athletes")
+    return rows
 
-    # Step 5: Save to CSV
+def main():
+    # Fetch 2025 nationals race
+    athletes, nat_date, race_data = fetch_nationals_2025_race()
+    
+    if not athletes:
+        logging.error("Failed to fetch nationals race data")
+        return
+    
+    # Process all athletes
+    rows = process_athlete_data(athletes, nat_date)
+    
+    # Create DataFrame and save to CSV
     df = pd.DataFrame(rows)
-    output_file = f"athletes_data_{year}.csv"
-    df.to_csv(output_file, index=False)
-    logging.info(f"✓ Wrote {output_file} with {len(df)} rows")
-    print(f"\nSuccess! Data saved to: {output_file}")
-    print(f"Total athletes: {len(df)}")
-    print(f"All-Americans: {df['All-American'].sum()}")
+    df.to_csv("2025_results.csv", index=False)
+    
+    logging.info("=" * 60)
+    logging.info(f"✓ Successfully created 2025_results.csv")
+    logging.info(f"  - {len(df)} athletes from 2025 NCAA DIII Championships")
+    logging.info(f"  - Nationals date: {nat_date}")
+    logging.info(f"  - All-Americans: {df['All-American'].sum()}")
+    logging.info("=" * 60)
 
 if __name__ == "__main__":
     main()
